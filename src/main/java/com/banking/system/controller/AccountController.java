@@ -3,10 +3,9 @@ package com.banking.system.controller;
 
 import com.banking.system.entity.Account;
 import com.banking.system.service.AccountService;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/accounts")
@@ -27,4 +26,21 @@ public class AccountController{
                 account.getStatus()
         );
     }
+
+    @PostMapping("/{accountId}/deposit")
+    public Account deposit(
+            @PathVariable Long accountId,
+            @RequestBody BigDecimal amount){
+
+        return accountService.deposit(accountId,amount);
+    }
+
+    @PostMapping("/{accountId}/withdrawal")
+    public Account withdrawal(
+            @PathVariable Long accountId,
+            @RequestBody BigDecimal amount){
+
+        return accountService.withdrawal(accountId,amount);
+    }
+
 }
