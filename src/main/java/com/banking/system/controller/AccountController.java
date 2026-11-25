@@ -43,4 +43,10 @@ public class AccountController{
         return accountService.withdrawal(accountId,amount);
     }
 
+    @PostMapping("/transfer")
+    public String transfer(@RequestParam Long senderId, @RequestParam Long receiverId, @RequestBody BigDecimal amount){
+        accountService.transfer(senderId,receiverId,amount);
+        return "Transfer successful";
+    }
+
 }

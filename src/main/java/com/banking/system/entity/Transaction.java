@@ -16,8 +16,11 @@ public class Transaction {
     private String transactionId;
 
    @ManyToOne
-    @JoinColumn(name="account_id", nullable = false)
+    @JoinColumn(name="account_id", nullable = true)
     private Account account;
+
+   @Column
+   private Long requestedAccountId;
 
    @Column(nullable = false)
     private String type;
@@ -28,8 +31,23 @@ public class Transaction {
    @Column(nullable = false)
     private String status;
 
+   @Column
+   private String failureReason;
+
    @Column(nullable = false)
     private LocalDateTime timestamp;
+
+   @ManyToOne
+   @JoinColumn(name="receiver_id")
+   private Account receiverAccount;
+
+    public Long getRequestedAccountId() {
+        return requestedAccountId;
+    }
+
+    public void setRequestedAccountId(Long requestedAccountId) {
+        this.requestedAccountId = requestedAccountId;
+    }
 
     public Long getId() {
         return id;
@@ -75,6 +93,14 @@ public class Transaction {
         this.status = status;
     }
 
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void setFailureReason(String failureReason) {
+        this.failureReason = failureReason;
+    }
+
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
@@ -83,12 +109,23 @@ public class Transaction {
         this.timestamp = timestamp;
     }
 
+    public Account getReceiverAccount() {
+        return receiverAccount;
+    }
+
+    public void setReceiverAccount(Account recieverAccount) {
+        this.receiverAccount = receiverAccount;
+    }
+
+
     public Transaction(){
    }
 
-   public Transaction(String transactionId, Account account, String type, BigDecimal amount, String status, LocalDateTime timestamp){
+   public Transaction(String transactionId, Account account, Account receiverAccount,
+                      String type, BigDecimal amount, String status, LocalDateTime timestamp){
        this.transactionId=transactionId;
        this.account=account;
+       this.receiverAccount=receiverAccount;
        this.type=type;
        this.amount=amount;
        this.status=status;
