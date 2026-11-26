@@ -231,19 +231,66 @@ public class AccountService {
 
     public List<TransactionDTO> getTransactionHistory(Long accountId){
 
-        List<Transaction> transactions = transactionRepository.findByAccountId(accountId);
+        List<Transaction> transactions = transactionRepository.findByAccount_IdOrReceiverAccount_Id(accountId,accountId);
         List<TransactionDTO> history = new ArrayList<>();
 
         for(Transaction transaction:transactions) {
-            TransactionDTO dto = new TransactionDTO(transaction.getTransactionId(), transaction.getAccount().getAccountNumber(), transaction.getType(), transaction.getAmount(), transaction.getStatus(), transaction.getTimestamp()
+
+            String accountNumber;
+            String debitOrCredit;
+
+            if (transaction.getAccount() != null && transaction.getAccount().getId().equals(accountId)) {
+
+                accountNumber = transaction.getAccount().getAccountNumber();
+            }else if(transaction.getReceiverAccount()!=null){
+                accountNumber = transaction.getReceiverAccount().getAccountNumber();
+            }else{
+                continue;
+            }
+            if("Deposit".equalsIgnoreCase(transaction.getType())){
+                debitOrCredit="CREDIT";
+            }else if("Withdrawal".equalsIgnoreCase(transaction.getType())){
+                debitOrCredit="DEBIT";
+            } else if ("Transfer".equalsIgnoreCase((transaction.getType()))) {
+                if(transaction.getAccount()!=null && transaction.getAccount().getId().equals(accountId)){
+                    debitOrCredit="DEBIT";
+                }else{
+                    debitOrCredit="CREDIT";
+                }
+            }else{
+                debitOrCredit="UNKNOWN";
+            }
+            TransactionDTO dto = new TransactionDTO(transaction.getTransactionId(), accountNumber, transaction.getType(), transaction.getAmount(), transaction.getStatus(), transaction.getTimestamp(),debitOrCredit
             );
-
-
             history.add(dto);
         }
         return history;
     }
 
+    public List<TransactionDTO> getTransferHistory(Long accountId){
+        List<Transaction> transactions = transactionRepository.findByAccount_IdAndTypeIgnoreCaseOrReceiverAccount_IdAndTypeIgnoreCase(accountId,"TRANSFER",accountId,"TRANSFER");
+
+        List<TransactionDTO> history = new ArrayList<>();
+
+        for(Transaction transaction:transactions){
+             String accountNumber;
+             String debitOrCredit;
+
+             if(transaction.getAccount()!=null && transaction.getAccount().getId().equals(accountId)){
+                 accountNumber=transaction.getAccount().getAccountNumber();
+                 debitOrCredit="DEBIT";
+             }else if(transaction.getReceiverAccount() != null && transaction.getReceiverAccount().getId().equals(accountId)) {
+                accountNumber = transaction.getReceiverAccount().getAccountNumber();
+                debitOrCredit = "CREDIT";
+            }else{
+                 continue;
+             }
+
+             TransactionDTO dto = new TransactionDTO(transaction.getTransactionId(),accountNumber,transaction.getType(),transaction.getAmount(),transaction.getStatus(),transaction.getTimestamp(),debitOrCredit);
+             history.add(dto);
+        }
+        return history;
+    }
     @Transactional
     public void transfer(Long senderId, Long receiverId, BigDecimal amount){
 

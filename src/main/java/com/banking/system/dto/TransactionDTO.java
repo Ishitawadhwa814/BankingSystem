@@ -36,13 +36,18 @@ public class TransactionDTO {
         return time;
     }
 
+    private String debitOrCredit;
 
-    public TransactionDTO(String transactionId, String accountNumber, String type, BigDecimal amount, String status, LocalDateTime time) {
+    public String getDebitOrCredit() {
+        return debitOrCredit;
+    }
+    public TransactionDTO(String transactionId, String accountNumber, String type, BigDecimal amount, String status, LocalDateTime time, String debitOrCredit) {
         this.transactionId = transactionId;
         this.accountNumber = accountNumber;
         this.type = type;
         this.amount = amount;
         this.status = status;
         this.time = time;
+        this.debitOrCredit=debitOrCredit;
     }
 }
