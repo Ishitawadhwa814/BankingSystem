@@ -11,4 +11,6 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long>{
 
     List<Transaction> findByAccount_IdAndTypeIgnoreCaseOrReceiverAccount_IdAndTypeIgnoreCase(Long senderId,String senderType,Long receiverId,String receiverType);
 
+    boolean existsByTransactionId(String transactionId);
+
 }

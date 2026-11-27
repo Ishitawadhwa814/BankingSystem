@@ -20,10 +20,13 @@ public class FailedTransactionService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void saveFailed(FailedTransaction failedTransaction){
-        Transaction saved = transactionRepository.save(failedTransaction.getTransaction());
-        failedTransaction.setTransaction(saved);
-        failedTransactionRepository.save(failedTransaction);
+    public void saveFailed(FailedTransaction failedTransaction) {
+
+        if (failedTransaction.getTransaction() != null) {
+            Transaction saved = transactionRepository.save(failedTransaction.getTransaction());
+            failedTransaction.setTransaction(saved);
+        }
+            failedTransactionRepository.save(failedTransaction);
     }
 }
 

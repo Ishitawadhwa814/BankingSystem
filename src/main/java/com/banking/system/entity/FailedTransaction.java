@@ -12,8 +12,11 @@ public class FailedTransaction {
     private Long id;
 
     @OneToOne
-    @JoinColumn(name="transaction_id",nullable = false,unique = true)
+    @JoinColumn(name="transaction_id",nullable = true,unique = true)
     private Transaction transaction;
+
+    @Column(name="request_transaction_id")
+    private String requestTransactionId;
 
     @Column(nullable = false)
     private String error;
@@ -58,6 +61,14 @@ public class FailedTransaction {
 
     public void setTime(LocalDateTime time) {
         this.time = time;
+    }
+
+    public String getRequestTransactionId() {
+        return requestTransactionId;
+    }
+
+    public void setRequestTransactionId(String requestTransactionId) {
+        this.requestTransactionId = requestTransactionId;
     }
 
     public FailedTransaction(){
