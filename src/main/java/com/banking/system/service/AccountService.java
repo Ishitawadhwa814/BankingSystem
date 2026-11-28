@@ -1,15 +1,15 @@
 package com.banking.system.service;
 
 import com.banking.system.dto.TransactionDTO;
-import com.banking.system.entity.Account;
-import com.banking.system.entity.FailedTransaction;
+import com.banking.system.entity.*;
 import com.banking.system.repository.AccountRepository;
-
+import com.banking.system.repository.CustomerRepository;
+import com.banking.system.repository.TransactionAuditRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
-import com.banking.system.entity.Transaction;
 import com.banking.system.repository.TransactionRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -19,6 +19,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
 @Service
 public class AccountService {
 
@@ -26,29 +27,39 @@ public class AccountService {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final FailedTransactionService failedTransactionService;
+    private final CustomerRepository customerRepository;
+    private final TransactionAuditRepository transactionAuditRepository;
 
-    public AccountService(AccountRepository accountRepository, TransactionRepository transactionRepository, FailedTransactionService failedTransactionService){
+
+    public AccountService(AccountRepository accountRepository, TransactionRepository transactionRepository, FailedTransactionService failedTransactionService,CustomerRepository customerRepository, TransactionAuditRepository transactionAuditRepository){
 
         this.accountRepository=accountRepository;
         this.transactionRepository=transactionRepository;
         this.failedTransactionService=failedTransactionService;
+        this.customerRepository=customerRepository;
+        this.transactionAuditRepository = transactionAuditRepository;
 
     }
 
-    public Account createAccount(String accountNumber, BigDecimal balance, String status){
+    public Account createAccount(String accountNumber, BigDecimal balance, String status,Long customerId){
+
+        Customer customer  = customerRepository.findById(customerId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Customer not found"));
 
         Account account = new Account(accountNumber, balance, status);
+        account.setCustomer(customer);
         return accountRepository.save(account);
     }
 
     @Transactional
     public Account deposit(Long accountId, BigDecimal amount){
 
+        long start = System.nanoTime();
+
         String transactionId = "TI-" + UUID.randomUUID();
 
         logger.info("Deposit request received | Transaction ID: {} | Account ID: {} | Amount: {} | Thread: {}",transactionId,accountId,amount,Thread.currentThread().getName());
 
-        Account account = accountRepository.findById(accountId).orElse(null);
+        Account account = accountRepository.findByIdForUpdate(accountId).orElse(null);
 
         if(account==null){
             LocalDateTime now = LocalDateTime.now();
@@ -106,9 +117,13 @@ public class AccountService {
 
         Transaction transaction = new Transaction(transactionId,saved,null,"Deposit",amount,"SUCCESS",LocalDateTime.now());
 
-        transactionRepository.save(transaction);
+        Transaction savedTransaction = transactionRepository.save(transaction);
+        long duration = (System.nanoTime()-start)/1_000_000;
 
-        logger.info("Deposit completed | Transaction ID: {} | Account ID:{} | Amount: {} | Result: SUCCESS | Thread: {}",transactionId,accountId,amount,Thread.currentThread().getName());
+        TransactionAudit audit = new TransactionAudit(savedTransaction,LocalDateTime.now(),Thread.currentThread().getName(),duration);
+        transactionAuditRepository.save(audit);
+
+        logger.info("Deposit completed | Transaction ID: {} | Account ID:{} | Amount: {} | Result: SUCCESS | Duration: {} ms | Thread: {}",transactionId,accountId,amount,duration,Thread.currentThread().getName());
         return saved;
     }
 
@@ -116,11 +131,13 @@ public class AccountService {
     @Transactional
     public Account withdrawal(Long accountId, BigDecimal amount) {
 
+        long start = System.nanoTime();
+
         String transactionId = "TI-" + UUID.randomUUID();
 
         logger.info("Withdrawal request received | Transaction ID: {} | Account ID:{} | Amount: {} | Thread: {}",transactionId,accountId,amount,Thread.currentThread().getName());
 
-        Account account = accountRepository.findById(accountId).orElse(null);
+        Account account = accountRepository.findByIdForUpdate(accountId).orElse(null);
 
         if (account == null) {
             LocalDateTime now = LocalDateTime.now();
@@ -199,7 +216,12 @@ public class AccountService {
 
         Transaction transaction = new Transaction(transactionId, saved, null, "Withdrawal", amount, "SUCCESS", LocalDateTime.now()
         );
-        transactionRepository.save(transaction);
+        Transaction savedTransaction = transactionRepository.save(transaction);
+        long duration = (System.nanoTime()-start)/1_000_000;
+
+        TransactionAudit audit = new TransactionAudit(savedTransaction,LocalDateTime.now(),Thread.currentThread().getName(),duration);
+        transactionAuditRepository.save(audit);
+
         logger.info("Withdrawal completed | Transaction ID: {} | Account ID: {} | Amount: {} | Result: SUCCESS | Thread: {}",transactionId,accountId,amount,Thread.currentThread().getName());
         return saved;
     }
@@ -273,6 +295,10 @@ public class AccountService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Transaction ID cannot be empty");
         }
 
+        if(senderId==null || receiverId==null){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Sender ID and receiver ID cannot be null");
+        }
+
         logger.info("Transfer request received | Transaction ID: {} | Sender ID: {} | Receiver ID: {} | Thread: {}",transactionId,senderId,receiverId,Thread.currentThread().getName());
         long start = System.currentTimeMillis();
         if(transactionRepository.existsByTransactionId(transactionId)){
@@ -289,9 +315,30 @@ public class AccountService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,"Duplicate Transaction ID found");
 
         }
-        Account sender=accountRepository.findById(senderId).orElse(null);
-        Account receiver = accountRepository.findById(receiverId).orElse(null);
 
+        if(senderId.equals(receiverId)){
+            LocalDateTime now = LocalDateTime.now();
+            Transaction transaction = new Transaction(transactionId,null,null,"TRANSFER",amount==null ? BigDecimal.ZERO:amount,"FAILED",now);
+
+            transaction.setFailureReason("Sender and receiver accounts are same");
+
+            FailedTransaction failedTransaction = new FailedTransaction(transaction,"SAME_ACCOUNT_NUMBER","Cannot transfer money to same account",now);
+            failedTransactionService.saveFailed(failedTransaction);
+
+            logger.warn("Transferrejected | Transaction ID: {} | Sender ID: {} | Receiver ID: {} | Reason: {} | Thread: {}",transactionId,senderId,receiverId,"SAME_ACCOUNT_TRANSFER",Thread.currentThread().getName());
+
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Cannot transfer to same account");
+        }
+        Account sender;
+        Account receiver;
+
+        if(senderId<receiverId){
+            sender = accountRepository.findByIdForUpdate(senderId).orElse(null);
+            receiver = accountRepository.findByIdForUpdate(receiverId).orElse(null);
+        }else{
+            receiver = accountRepository.findByIdForUpdate(receiverId).orElse(null);
+            sender = accountRepository.findByIdForUpdate(senderId).orElse(null);
+        }
         if(sender==null || receiver==null){
 
             LocalDateTime now = LocalDateTime.now();
@@ -337,20 +384,6 @@ public class AccountService {
 
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Transfer amount must be greater than zero");
         }
-        if(senderId.equals(receiverId)){
-
-            LocalDateTime now = LocalDateTime.now();
-            Transaction transaction = new Transaction(transactionId,sender,receiver,"TRANSFER",amount==null ? BigDecimal.ZERO:amount,"FAILED",now);
-
-            transaction.setFailureReason("Sender and receiver accounts are same");
-
-            FailedTransaction failedTransaction = new FailedTransaction(transaction,"SAME_ACCOUNT_TRANSFER","Cannot transfer money to same account",now);
-            failedTransactionService.saveFailed(failedTransaction);
-
-            logger.warn("Transfer rejected | Transaction ID: {} | Sender ID: {} | Receiver ID: {} | Reason:{} | Thread: {}",transactionId,senderId,receiverId,"SAME_ACCOUNT_TRANSFER",Thread.currentThread().getName());
-
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Cannot transfer to same account");
-        }
         if(sender.getBalance().compareTo(amount)<0){
 
             LocalDateTime now = LocalDateTime.now();
@@ -372,9 +405,13 @@ public class AccountService {
         accountRepository.save(receiver);
 
         Transaction transaction = new Transaction(transactionId,sender,receiver,"TRANSFER",amount,"SUCCESS",LocalDateTime.now());
-        transactionRepository.save(transaction);
 
-        long duration=System.currentTimeMillis()-start;
+        Transaction savedTransaction = transactionRepository.save(transaction);
+        long duration = System.currentTimeMillis()-start;
+
+        TransactionAudit audit = new TransactionAudit(savedTransaction,LocalDateTime.now(),Thread.currentThread().getName(),duration);
+        transactionAuditRepository.save(audit);
+
 
         logger.info("Transfer completed | Transaction ID: {} | Amount: {} | Result: SUCCESS | Duration: {} ms | Thread: {}",transactionId,amount,duration,Thread.currentThread().getName());
 

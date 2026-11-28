@@ -16,9 +16,9 @@ public class AccountController{
     }
 
     @PostMapping
-    public Account createAccount(@RequestBody Account account){
+    public Account createAccount(@RequestParam Long customerId,@RequestBody Account account){
 
-        return accountService.createAccount(account.getAccountNumber(), account.getBalance(), account.getStatus());
+        return accountService.createAccount(account.getAccountNumber(), account.getBalance(), account.getStatus(),customerId);
     }
 
 

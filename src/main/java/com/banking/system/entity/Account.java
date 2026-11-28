@@ -22,6 +22,10 @@ public class Account{
     @Column(nullable = false)
     private String status;
 
+    @ManyToOne
+    @JoinColumn(name="customer_id")
+    private Customer customer;
+
     public Account(){
 
     }
@@ -57,5 +61,13 @@ public class Account{
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Customer getCustomer(){
+        return customer;
+    }
+
+    public void setCustomer(Customer customer){
+        this.customer=customer;
     }
 }
